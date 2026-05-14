@@ -11,6 +11,7 @@ import {
   Gauge,
   LayoutDashboard,
   LogOut,
+  Pencil,
   Plus,
   Search,
   Settings,
@@ -47,6 +48,7 @@ import {
   statusLabels,
   statusOptions,
   taskPriorityRank,
+  toDateInputValue,
 } from "@/lib/utils";
 
 type View = "dashboard" | "today" | "all" | "brain" | "completed" | "settings";
@@ -500,7 +502,7 @@ export default function Home() {
         {view === "all" && !activeBusiness ? (
           <div className="space-y-4">
             <div className="relative"><Search className="absolute left-3 top-2.5 text-slate-500" size={16} /><Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search all tasks" className="pl-9" /></div>
-            <TaskList businesses={businesses} tasks={filteredTasks} onUpdateTask={updateTask} onDeleteTask={deleteTask} />
+            <GroupedTaskList businesses={businesses} tasks={filteredTasks} onUpdateTask={updateTask} onDeleteTask={deleteTask} />
           </div>
         ) : null}
 
@@ -551,18 +553,78 @@ function BusinessPanel({ business, tasks, onBack, onCreateTask, onUpdateTask, on
   );
 }
 
-function TaskList({ businesses, tasks, compact, onUpdateTask, onDeleteTask }: { businesses: Business[]; tasks: Task[]; compact?: boolean; onUpdateTask: (id: string, data: Partial<Task>) => Promise<void>; onDeleteTask: (id: string) => Promise<void> }) {
+function GroupedTaskList({ businesses, tasks, onUpdateTask, onDeleteTask }: { businesses: Business[]; tasks: Task[]; onUpdateTask: (id: string, data: Partial<Task>) => Promise<void>; onDeleteTask: (id: string) => Promise<void> }) {
   if (!tasks.length) return <Card><CardHeader><CardTitle>No tasks here</CardTitle><CardDescription>Clear and focused.</CardDescription></CardHeader></Card>;
+
+  const groups = businesses
+    .map((business) => ({ business, tasks: tasks.filter((task) => task.business_id === business.id) }))
+    .filter((group) => group.tasks.length > 0);
+  const unassignedTasks = tasks.filter((task) => !businesses.some((business) => business.id === task.business_id));
+
+  return (
+    <div className="space-y-8">
+      {groups.map((group) => (
+        <section key={group.business.id} className="space-y-3">
+          <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-3">
+            <div className="flex items-center gap-3">
+              <span className="h-3 w-3 rounded-full" style={{ backgroundColor: group.business.color }} />
+              <div>
+                <h2 className="text-xl font-black text-white">{group.business.name}</h2>
+                <p className="text-sm text-slate-400">{group.tasks.length} task{group.tasks.length === 1 ? "" : "s"}</p>
+              </div>
+            </div>
+            <Badge>{group.tasks.filter((task) => task.status !== "DONE").length} open</Badge>
+          </div>
+          <TaskList businesses={businesses} tasks={group.tasks} showBusinessBadge={false} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} />
+        </section>
+      ))}
+
+      {unassignedTasks.length ? (
+        <section className="space-y-3">
+          <div className="border-b border-white/10 pb-3">
+            <h2 className="text-xl font-black text-white">Unassigned</h2>
+            <p className="text-sm text-slate-400">{unassignedTasks.length} task{unassignedTasks.length === 1 ? "" : "s"}</p>
+          </div>
+          <TaskList businesses={businesses} tasks={unassignedTasks} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} />
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+function TaskList({ businesses, tasks, compact, showBusinessBadge = true, onUpdateTask, onDeleteTask }: { businesses: Business[]; tasks: Task[]; compact?: boolean; showBusinessBadge?: boolean; onUpdateTask: (id: string, data: Partial<Task>) => Promise<void>; onDeleteTask: (id: string) => Promise<void> }) {
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+
+  if (!tasks.length) return <Card><CardHeader><CardTitle>No tasks here</CardTitle><CardDescription>Clear and focused.</CardDescription></CardHeader></Card>;
+
+  async function saveTaskEdit(task: Task, form: FormData) {
+    const nextStatus = form.get("status") as TaskStatus;
+    await onUpdateTask(task.id, {
+      business_id: String(form.get("business_id") || task.business_id),
+      title: String(form.get("title") || "").trim(),
+      description: String(form.get("description") || "").trim(),
+      status: nextStatus,
+      priority: form.get("priority") as TaskPriority,
+      category: form.get("category") as TaskCategory,
+      due_date: dueFromInput(String(form.get("due_date") || "")),
+      is_today: form.get("is_today") === "on",
+      skipped_today: false,
+      completed_at: nextStatus === "DONE" ? task.completed_at || new Date().toISOString() : null,
+    });
+    setEditingTaskId(null);
+  }
+
   return (
     <div className="space-y-3">
       {tasks.map((task) => {
         const business = businesses.find((item) => item.id === task.business_id);
+        const isEditing = editingTaskId === task.id;
         return (
           <Card key={task.id}>
             <CardContent className="flex flex-col gap-4 pt-5 md:flex-row md:items-center md:justify-between">
               <div>
                 <div className="flex flex-wrap gap-2">
-                  {business ? <Badge>{business.name}</Badge> : null}
+                  {showBusinessBadge && business ? <Badge>{business.name}</Badge> : null}
                   <Badge variant={task.status === "DONE" ? "done" : task.status === "BLOCKED" ? "blocked" : "default"}>{statusLabels[task.status]}</Badge>
                   <Badge variant={task.priority === "HIGH" ? "high" : task.priority === "MEDIUM" ? "medium" : "low"}>{priorityLabels[task.priority]}</Badge>
                   <Badge>{categoryLabels[task.category]}</Badge>
@@ -572,12 +634,54 @@ function TaskList({ businesses, tasks, compact, onUpdateTask, onDeleteTask }: { 
                 {!compact ? <p className="mt-1 text-sm text-slate-400">{task.description || "No notes."}</p> : null}
               </div>
               <div className="flex shrink-0 flex-wrap gap-2">
+                <Button variant="secondary" onClick={() => setEditingTaskId(isEditing ? null : task.id)}><Pencil size={16} /> Edit</Button>
                 <Button variant="success" onClick={() => onUpdateTask(task.id, { status: "DONE", completed_at: new Date().toISOString(), is_today: false })}><CheckCircle2 size={16} /> Done</Button>
                 <Button variant="secondary" onClick={() => onUpdateTask(task.id, { status: task.status === "DOING" ? "TODO" : "DOING", is_today: true, skipped_today: false })}>Focus</Button>
                 <Button variant="ghost" onClick={() => onUpdateTask(task.id, { skipped_today: true, is_today: false })}>Skip</Button>
                 <Button variant="danger" size="icon" onClick={() => onDeleteTask(task.id)}><Trash2 size={16} /></Button>
               </div>
             </CardContent>
+            {isEditing ? (
+              <CardContent className="border-t border-white/10 pt-5">
+                <form action={(form) => saveTaskEdit(task, form)} className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Title</Label>
+                    <Input name="title" defaultValue={task.title} required />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Notes</Label>
+                    <Textarea name="description" defaultValue={task.description || ""} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Business</Label>
+                    <Select name="business_id" defaultValue={task.business_id}>
+                      {businesses.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Status</Label>
+                    <Select name="status" defaultValue={task.status}>{statusOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Priority</Label>
+                    <Select name="priority" defaultValue={task.priority}>{priorityOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Category</Label>
+                    <Select name="category" defaultValue={task.category}>{categoryOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Due date</Label>
+                    <Input name="due_date" type="date" defaultValue={toDateInputValue(task.due_date)} />
+                  </div>
+                  <label className="flex items-center gap-2 self-end text-sm text-slate-300"><input type="checkbox" name="is_today" defaultChecked={task.is_today} className="accent-sky-400" /> Today Mode</label>
+                  <div className="flex flex-wrap gap-2 md:col-span-2">
+                    <Button type="submit">Save changes</Button>
+                    <Button type="button" variant="ghost" onClick={() => setEditingTaskId(null)}>Cancel</Button>
+                  </div>
+                </form>
+              </CardContent>
+            ) : null}
           </Card>
         );
       })}
