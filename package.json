@@ -1,0 +1,37 @@
+{
+  "name": "business-cmd-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "node --preserve-symlinks --preserve-symlinks-main ./scripts/run-next.cjs dev",
+    "build": "node --preserve-symlinks --preserve-symlinks-main ./scripts/run-next.cjs build",
+    "start": "node --preserve-symlinks --preserve-symlinks-main ./scripts/run-next.cjs start",
+    "lint": "node --preserve-symlinks --preserve-symlinks-main -r ./scripts/no-realpath.cjs ./node_modules/eslint/bin/eslint.js .",
+    "typecheck": "node --preserve-symlinks --preserve-symlinks-main -r ./scripts/no-realpath.cjs ./node_modules/typescript/bin/tsc --noEmit",
+    "verify": "npm run lint && npm run typecheck && npm run build"
+  },
+  "dependencies": {
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.511.0",
+    "next": "15.5.18",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "tailwind-merge": "^3.3.0",
+    "zod": "^3.25.30"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
+    "@tailwindcss/postcss": "^4.1.7",
+    "@types/node": "20.17.6",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "^19.0.0",
+    "eslint": "^9.27.0",
+    "eslint-config-next": "15.5.18",
+    "tailwindcss": "^4.1.7",
+    "typescript": "5.8.2"
+  },
+  "overrides": {
+    "postcss": "^8.5.14"
+  }
+}
