@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { Component, FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import {
   Archive,
   Brain,
@@ -50,6 +50,44 @@ import {
 } from "@/lib/utils";
 
 type View = "dashboard" | "today" | "all" | "brain" | "completed" | "settings";
+type BootState = "checking" | "signed-out" | "signed-in";
+
+class AppErrorBoundary extends Component<{ children: ReactNode }, { error: string }> {
+  state = { error: "" };
+
+  static getDerivedStateFromError(error: unknown) {
+    return { error: error instanceof Error ? error.message : "The dashboard crashed while loading." };
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <main className="flex min-h-screen items-center justify-center px-4 py-10">
+          <Card className="w-full max-w-lg border-red-400/30">
+            <CardHeader>
+              <CardTitle>Dashboard could not load</CardTitle>
+              <CardDescription>{this.state.error}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Button
+                type="button"
+                onClick={() => {
+                  window.localStorage.removeItem("business_cmd_supabase_session");
+                  window.location.reload();
+                }}
+              >
+                Reset login and reload
+              </Button>
+              <p className="text-sm text-slate-400">This keeps your Supabase data safe. It only clears the saved login in this browser.</p>
+            </CardContent>
+          </Card>
+        </main>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 const navItems: Array<{ view: View; label: string; icon: typeof LayoutDashboard }> = [
   { view: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -166,6 +204,7 @@ function AuthScreen({ onSession }: { onSession: (session: SupabaseSession) => vo
 
 export default function Home() {
   const [session, setSession] = useState<SupabaseSession | null>(null);
+  const [bootState, setBootState] = useState<BootState>("checking");
   const [view, setView] = useState<View>("dashboard");
   const [activeBusinessId, setActiveBusinessId] = useState<string | null>(null);
   const [businesses, setBusinesses] = useState<Business[]>([]);
@@ -175,7 +214,14 @@ export default function Home() {
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    setSession(getStoredSession());
+    try {
+      const storedSession = getStoredSession();
+      setSession(storedSession);
+      setBootState(storedSession ? "signed-in" : "signed-out");
+    } catch {
+      setSession(null);
+      setBootState("signed-out");
+    }
   }, []);
 
   async function loadData(currentSession = session) {
@@ -191,7 +237,14 @@ export default function Home() {
   }
 
   useEffect(() => {
-    if (session) loadData(session).catch((err) => setMessage(err.message));
+    if (session) {
+      loadData(session).catch((err) => {
+        storeSession(null);
+        setSession(null);
+        setBootState("signed-out");
+        setMessage(err instanceof Error ? err.message : "Please log in again.");
+      });
+    }
   }, [session]);
 
   async function seedDefaults() {
@@ -294,9 +347,34 @@ export default function Home() {
     });
   }, [businesses, query, tasks]);
 
-  if (!session) return <AuthScreen onSession={setSession} />;
+  if (bootState === "checking") {
+    return (
+      <main className="flex min-h-screen items-center justify-center px-4 py-10">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle>Loading Business CMD</CardTitle>
+            <CardDescription>Checking your saved login.</CardDescription>
+          </CardHeader>
+        </Card>
+      </main>
+    );
+  }
+
+  if (!session) {
+    return (
+      <AppErrorBoundary>
+        <AuthScreen
+          onSession={(nextSession) => {
+            setSession(nextSession);
+            setBootState("signed-in");
+          }}
+        />
+      </AppErrorBoundary>
+    );
+  }
 
   return (
+    <AppErrorBoundary>
     <div className="min-h-screen">
       <aside className="fixed inset-y-0 left-0 hidden w-72 border-r border-white/10 bg-slate-950/90 p-5 lg:block">
         <div className="flex items-center gap-3">
@@ -420,6 +498,7 @@ export default function Home() {
         ) : null}
       </main>
     </div>
+    </AppErrorBoundary>
   );
 }
 
