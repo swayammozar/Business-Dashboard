@@ -404,7 +404,20 @@ export default function Home() {
             <h1 className="mt-2 text-3xl font-black text-white">{activeBusiness ? activeBusiness.name : view === "today" ? "Today's Battle Plan" : view === "brain" ? "Brain Dump" : "Business CMD Dashboard"}</h1>
           </div>
           <div className="flex flex-wrap gap-2 lg:hidden">
-            {navItems.map((item) => <Button key={item.view} type="button" variant="secondary" size="sm" onClick={() => setView(item.view)}>{item.label}</Button>)}
+            {navItems.map((item) => (
+              <Button
+                key={item.view}
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setView(item.view);
+                  setActiveBusinessId(null);
+                }}
+              >
+                {item.label}
+              </Button>
+            ))}
           </div>
         </header>
 
@@ -467,7 +480,17 @@ export default function Home() {
         ) : null}
 
         {activeBusiness ? (
-          <BusinessPanel business={activeBusiness} tasks={tasks.filter((task) => task.business_id === activeBusiness.id)} onBack={() => setActiveBusinessId(null)} onCreateTask={createTask} onUpdateTask={updateTask} onDeleteTask={deleteTask} />
+          <BusinessPanel
+            business={activeBusiness}
+            tasks={tasks.filter((task) => task.business_id === activeBusiness.id)}
+            onBack={() => {
+              setActiveBusinessId(null);
+              setView("dashboard");
+            }}
+            onCreateTask={createTask}
+            onUpdateTask={updateTask}
+            onDeleteTask={deleteTask}
+          />
         ) : null}
 
         {view === "today" && !activeBusiness ? (
@@ -506,7 +529,7 @@ function BusinessPanel({ business, tasks, onBack, onCreateTask, onUpdateTask, on
   return (
     <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
       <section className="space-y-4">
-        <Button variant="ghost" onClick={onBack}>Back</Button>
+        <Button variant="secondary" onClick={onBack}>Back to Dashboard</Button>
         <TaskList businesses={[business]} tasks={tasks} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} />
       </section>
       <Card className="h-fit">
