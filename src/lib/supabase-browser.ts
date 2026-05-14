@@ -39,7 +39,13 @@ export function getStoredSession(): SupabaseSession | null {
   if (!raw) return null;
 
   try {
-    return JSON.parse(raw) as SupabaseSession;
+    const session = JSON.parse(raw) as SupabaseSession;
+    if (!session?.access_token || !session.user?.id) {
+      window.localStorage.removeItem(sessionKey);
+      return null;
+    }
+
+    return session;
   } catch {
     window.localStorage.removeItem(sessionKey);
     return null;

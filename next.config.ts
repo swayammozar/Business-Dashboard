@@ -1,10 +1,13 @@
 import type { NextConfig } from "next";
 
+const githubRepoName = process.env.GITHUB_REPOSITORY?.split("/")[1];
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || (process.env.GITHUB_ACTIONS && githubRepoName ? `/${githubRepoName}` : "");
+
 const nextConfig: NextConfig = {
   output: "export",
   trailingSlash: true,
-  basePath: process.env.NEXT_PUBLIC_BASE_PATH || "",
-  assetPrefix: process.env.NEXT_PUBLIC_BASE_PATH || "",
+  basePath,
+  assetPrefix: basePath,
   images: {
     unoptimized: true,
   },
