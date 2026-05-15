@@ -255,7 +255,7 @@ export default function Home() {
 
     try {
       const [habitRows, habitLogRows] = await Promise.all([
-        restSelect<Habit[]>(currentSession, "habits?select=*&archived=eq.false&order=created_at.asc"),
+        restSelect<Habit[]>(currentSession, "habits?select=*&order=archived.asc,created_at.asc"),
         restSelect<HabitLog[]>(currentSession, "habit_logs?select=*&order=completed_date.desc"),
       ]);
       setHabits(habitRows);
@@ -763,8 +763,12 @@ async function updateBrainDump(session: SupabaseSession, id: string, data: Parti
 
 function HabitPanel({ habits, logs, onCreate, onUpdate, onToggleDate }: { habits: Habit[]; logs: HabitLog[]; onCreate: (form: FormData) => Promise<void>; onUpdate: (id: string, data: Partial<Habit>) => Promise<void>; onToggleDate: (habitId: string, date: string) => Promise<void> }) {
   const [editingHabitId, setEditingHabitId] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
   const days = recentDateKeys(7);
   const today = localDateKey();
+  const visibleHabits = habits.filter((habit) => showArchived || !habit.archived);
+  const activeCount = habits.filter((habit) => !habit.archived).length;
+  const archivedCount = habits.length - activeCount;
 
   function habitDoneOn(habitId: string, date: string) {
     return logs.some((log) => log.habit_id === habitId && log.completed_date === date);
@@ -797,16 +801,27 @@ function HabitPanel({ habits, logs, onCreate, onUpdate, onToggleDate }: { habits
       </Card>
 
       <section className="space-y-4">
-        {habits.length === 0 ? (
+        <div className="flex flex-col justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] p-4 md:flex-row md:items-center">
+          <div>
+            <h2 className="text-lg font-black text-white">Daily Checklist</h2>
+            <p className="text-sm text-slate-400">{activeCount} active | {archivedCount} archived</p>
+          </div>
+          <label className="flex items-center gap-2 text-sm font-semibold text-slate-300">
+            <input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} className="accent-sky-400" />
+            Show archived
+          </label>
+        </div>
+
+        {visibleHabits.length === 0 ? (
           <Card>
             <CardHeader>
-              <CardTitle>No habits yet</CardTitle>
-              <CardDescription>Add one habit and start with today. Small wins stack fast.</CardDescription>
+              <CardTitle>{showArchived ? "No habits found" : "No active habits yet"}</CardTitle>
+              <CardDescription>{showArchived ? "Archived habits will show here after you archive one." : "Add one habit and start with today. Small wins stack fast."}</CardDescription>
             </CardHeader>
           </Card>
         ) : null}
 
-        {habits.map((habit) => {
+        {visibleHabits.map((habit) => {
           const isEditing = editingHabitId === habit.id;
           const completedDays = days.filter((date) => habitDoneOn(habit.id, date)).length;
           const progress = Math.round((completedDays / days.length) * 100);
@@ -821,7 +836,7 @@ function HabitPanel({ habits, logs, onCreate, onUpdate, onToggleDate }: { habits
                     <CardTitle>{habit.name}</CardTitle>
                     <CardDescription>{habit.description || "Daily checklist habit."}</CardDescription>
                   </div>
-                  <Badge variant={doneToday ? "done" : "default"}>{doneToday ? "Done today" : "Pending today"}</Badge>
+                  <Badge variant={habit.archived ? "low" : doneToday ? "done" : "default"}>{habit.archived ? "Archived" : doneToday ? "Done today" : "Pending today"}</Badge>
                 </div>
               </CardHeader>
               <CardContent className="space-y-5">
@@ -877,7 +892,9 @@ function HabitPanel({ habits, logs, onCreate, onUpdate, onToggleDate }: { habits
                     <CheckCircle2 size={16} /> {doneToday ? "Undo today" : "Mark today"}
                   </Button>
                   <Button variant="secondary" onClick={() => setEditingHabitId(isEditing ? null : habit.id)}><Pencil size={16} /> Edit</Button>
-                  <Button variant="danger" onClick={() => onUpdate(habit.id, { archived: true })}><Archive size={16} /> Archive</Button>
+                  <Button variant={habit.archived ? "secondary" : "danger"} onClick={() => onUpdate(habit.id, { archived: !habit.archived })}>
+                    <Archive size={16} /> {habit.archived ? "Restore" : "Archive"}
+                  </Button>
                 </div>
               </CardContent>
             </Card>
