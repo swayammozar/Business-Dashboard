@@ -1,17 +1,25 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH?.trim() || (process.env.GITHUB_ACTIONS && process.env.GITHUB_REPOSITORY ? `/${process.env.GITHUB_REPOSITORY.split("/")[1]}` : "");
+
 export const metadata: Metadata = {
   title: "Business CMD Dashboard",
   description: "A personal business command dashboard for clear execution.",
   icons: {
-    icon: "/favicon.svg",
+    icon: `${basePath}/favicon.svg`,
+    shortcut: `${basePath}/favicon.svg`,
+    apple: `${basePath}/favicon.svg`,
   },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
+      <head>
+        <link rel="icon" href={`${basePath}/favicon.svg`} type="image/svg+xml" />
+        <link rel="shortcut icon" href={`${basePath}/favicon.svg`} type="image/svg+xml" />
+      </head>
       <body>
         <script
           dangerouslySetInnerHTML={{
