@@ -23,7 +23,7 @@ No Vercel. No Prisma runtime. No custom server.
    supabase/schema.sql
    ```
 
-4. In Supabase, go to **Project Settings** → **API**.
+4. In Supabase, go to **Project Settings** -> **API**.
 5. Copy:
 
    ```text
@@ -58,39 +58,29 @@ When you sign up in the app, click **Create starter workspace** to add the defau
 
 1. Create a GitHub repository.
 2. Push this project to GitHub.
-3. In the repo, go to **Settings** → **Secrets and variables** → **Actions** → **Variables**.
+3. In the repo, go to **Settings** -> **Secrets and variables** -> **Actions** -> **Variables**.
 4. Add these repository variables:
 
    ```text
    NEXT_PUBLIC_SUPABASE_URL
    NEXT_PUBLIC_SUPABASE_ANON_KEY
-   NEXT_PUBLIC_BASE_PATH
    ```
 
-For a normal GitHub Pages project site, set:
+`NEXT_PUBLIC_BASE_PATH` is optional locally. GitHub Actions automatically uses the repository name for the live GitHub Pages path.
 
-```text
-NEXT_PUBLIC_BASE_PATH=/your-repo-name
-```
-
-Example:
-
-```text
-NEXT_PUBLIC_BASE_PATH=/business-cmd-dashboard
-```
-
-5. Go to **Settings** → **Pages**.
+5. Go to **Settings** -> **Pages**.
 6. Set source to **GitHub Actions**.
 7. Push to `main`. GitHub Actions builds the static site and deploys it.
 
 ## Features
 
 - Supabase signup/login
-- User-scoped businesses, tasks, and brain dump items
+- User-scoped businesses, tasks, brain dump items, and habits
 - Business dashboard with progress and priority task
 - Today Mode capped at 5 important tasks
 - Brain Dump capture and convert
 - All Tasks and Completed Tasks views
+- Habit Tracker with editable habits, daily check-ins, and 7-day progress
 - Social Media task category included
 - Responsive dark command-center UI
 

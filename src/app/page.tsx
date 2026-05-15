@@ -24,7 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Label, Select, Textarea } from "@/components/ui/field";
 import { Progress } from "@/components/ui/progress";
-import type { BrainDump, Business, Task, TaskCategory, TaskPriority, TaskStatus } from "@/lib/app-types";
+import type { BrainDump, Business, Habit, HabitLog, Task, TaskCategory, TaskPriority, TaskStatus } from "@/lib/app-types";
 import {
   getStoredSession,
   hasSupabaseConfig,
@@ -51,7 +51,7 @@ import {
   toDateInputValue,
 } from "@/lib/utils";
 
-type View = "dashboard" | "today" | "all" | "brain" | "completed" | "settings";
+type View = "dashboard" | "today" | "all" | "brain" | "habits" | "completed" | "settings";
 type BootState = "checking" | "signed-out" | "signed-in";
 
 class AppErrorBoundary extends Component<{ children: ReactNode }, { error: string }> {
@@ -96,6 +96,7 @@ const navItems: Array<{ view: View; label: string; icon: typeof LayoutDashboard 
   { view: "today", label: "Today Mode", icon: Gauge },
   { view: "all", label: "All Tasks", icon: ClipboardList },
   { view: "brain", label: "Brain Dump", icon: Brain },
+  { view: "habits", label: "Habit Tracker", icon: CheckCircle2 },
   { view: "completed", label: "Completed", icon: CheckCircle2 },
   { view: "settings", label: "Settings", icon: Settings },
 ];
@@ -133,6 +134,19 @@ const defaultTasks: Record<string, Array<[string, string, TaskPriority, TaskCate
 
 function todayInput() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function localDateKey(date = new Date()) {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
+}
+
+function recentDateKeys(days = 7) {
+  return Array.from({ length: days }, (_, index) => {
+    const date = new Date();
+    date.setDate(date.getDate() - index);
+    return localDateKey(date);
+  }).reverse();
 }
 
 function dueFromInput(value: string) {
@@ -212,6 +226,8 @@ export default function Home() {
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [brainDumps, setBrainDumps] = useState<BrainDump[]>([]);
+  const [habits, setHabits] = useState<Habit[]>([]);
+  const [habitLogs, setHabitLogs] = useState<HabitLog[]>([]);
   const [query, setQuery] = useState("");
   const [message, setMessage] = useState("");
 
@@ -236,6 +252,19 @@ export default function Home() {
     setBusinesses(businessRows);
     setTasks(taskRows);
     setBrainDumps(brainRows);
+
+    try {
+      const [habitRows, habitLogRows] = await Promise.all([
+        restSelect<Habit[]>(currentSession, "habits?select=*&archived=eq.false&order=created_at.asc"),
+        restSelect<HabitLog[]>(currentSession, "habit_logs?select=*&order=completed_date.desc"),
+      ]);
+      setHabits(habitRows);
+      setHabitLogs(habitLogRows);
+    } catch {
+      setHabits([]);
+      setHabitLogs([]);
+      setMessage("Habit Tracker needs the new Supabase SQL setup before habits can save.");
+    }
   }
 
   useEffect(() => {
@@ -329,6 +358,40 @@ export default function Home() {
     await loadData();
   }
 
+  async function createHabit(form: FormData) {
+    if (!session) return;
+    await restInsert<Habit[]>(session, "habits", {
+      user_id: session.user.id,
+      name: String(form.get("name") || "").trim(),
+      description: String(form.get("description") || "").trim(),
+      color: String(form.get("color") || "#38bdf8"),
+    });
+    await loadData();
+  }
+
+  async function updateHabit(id: string, data: Partial<Habit>) {
+    if (!session) return;
+    await restUpdate<Habit[]>(session, `habits?id=eq.${id}`, data);
+    await loadData();
+  }
+
+  async function toggleHabitDate(habitId: string, date: string) {
+    if (!session) return;
+    const existing = habitLogs.find((log) => log.habit_id === habitId && log.completed_date === date);
+
+    if (existing) {
+      await restDelete(session, `habit_logs?id=eq.${existing.id}`);
+    } else {
+      await restInsert<HabitLog[]>(session, "habit_logs", {
+        user_id: session.user.id,
+        habit_id: habitId,
+        completed_date: date,
+      });
+    }
+
+    await loadData();
+  }
+
   const activeBusiness = businesses.find((business) => business.id === activeBusinessId) || null;
   const openTasks = tasks.filter((task) => task.status !== "DONE");
   const doneTasks = tasks.filter((task) => task.status === "DONE");
@@ -343,7 +406,7 @@ export default function Home() {
 
   const filteredTasks = useMemo(() => {
     const term = query.toLowerCase();
-    return tasks.filter((task) => {
+    return tasks.filter((task) => task.status !== "DONE").filter((task) => {
       const business = businesses.find((item) => item.id === task.business_id);
       return `${task.title} ${task.description} ${business?.name || ""}`.toLowerCase().includes(term);
     });
@@ -403,7 +466,7 @@ export default function Home() {
         <header className="mb-6 flex flex-col justify-between gap-4 rounded-lg border border-white/10 bg-white/[0.03] p-5 md:flex-row md:items-center">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.28em] text-sky-300">Business Command Center</p>
-            <h1 className="mt-2 text-3xl font-black text-white">{activeBusiness ? activeBusiness.name : view === "today" ? "Today's Battle Plan" : view === "brain" ? "Brain Dump" : "Business CMD Dashboard"}</h1>
+            <h1 className="mt-2 text-3xl font-black text-white">{activeBusiness ? activeBusiness.name : view === "today" ? "Today's Battle Plan" : view === "brain" ? "Brain Dump" : view === "habits" ? "Habit Tracker" : "Business CMD Dashboard"}</h1>
           </div>
           <div className="flex flex-wrap gap-2 lg:hidden">
             {navItems.map((item) => (
@@ -511,6 +574,10 @@ export default function Home() {
             await createTask(new FormData(Object.assign(document.createElement("form"), { innerHTML: `<input name="title" value="${item.text.replace(/"/g, "&quot;")}"><input name="description" value="${item.text.replace(/"/g, "&quot;")}"><input name="status" value="TODO"><input name="priority" value="MEDIUM"><input name="category" value="IDEAS">` })), businessId);
             await updateBrainDump(session, item.id, { archived: true, business_id: businessId }, loadData);
           }} />
+        ) : null}
+
+        {view === "habits" && !activeBusiness ? (
+          <HabitPanel habits={habits} logs={habitLogs} onCreate={createHabit} onUpdate={updateHabit} onToggleDate={toggleHabitDate} />
         ) : null}
 
         {view === "completed" && !activeBusiness ? <TaskList businesses={businesses} tasks={doneTasks} onUpdateTask={updateTask} onDeleteTask={deleteTask} /> : null}
@@ -692,6 +759,133 @@ function TaskList({ businesses, tasks, compact, showBusinessBadge = true, onUpda
 async function updateBrainDump(session: SupabaseSession, id: string, data: Partial<BrainDump>, reload: () => Promise<void>) {
   await restUpdate<BrainDump[]>(session, `brain_dumps?id=eq.${id}`, data);
   await reload();
+}
+
+function HabitPanel({ habits, logs, onCreate, onUpdate, onToggleDate }: { habits: Habit[]; logs: HabitLog[]; onCreate: (form: FormData) => Promise<void>; onUpdate: (id: string, data: Partial<Habit>) => Promise<void>; onToggleDate: (habitId: string, date: string) => Promise<void> }) {
+  const [editingHabitId, setEditingHabitId] = useState<string | null>(null);
+  const days = recentDateKeys(7);
+  const today = localDateKey();
+
+  function habitDoneOn(habitId: string, date: string) {
+    return logs.some((log) => log.habit_id === habitId && log.completed_date === date);
+  }
+
+  async function saveHabitEdit(habit: Habit, form: FormData) {
+    await onUpdate(habit.id, {
+      name: String(form.get("name") || "").trim(),
+      description: String(form.get("description") || "").trim(),
+      color: String(form.get("color") || habit.color),
+    });
+    setEditingHabitId(null);
+  }
+
+  return (
+    <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
+      <Card className="h-fit">
+        <CardHeader>
+          <CardTitle><Plus size={18} /> Add Habit</CardTitle>
+          <CardDescription>Track simple daily wins like water, gym, reading, or self-control goals.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form action={onCreate} className="space-y-3">
+            <Input name="name" placeholder="Habit name" required />
+            <Textarea name="description" placeholder="Short note or goal" />
+            <Input name="color" type="color" defaultValue="#38bdf8" className="h-11 p-1" />
+            <Button className="w-full">Add habit</Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <section className="space-y-4">
+        {habits.length === 0 ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>No habits yet</CardTitle>
+              <CardDescription>Add one habit and start with today. Small wins stack fast.</CardDescription>
+            </CardHeader>
+          </Card>
+        ) : null}
+
+        {habits.map((habit) => {
+          const isEditing = editingHabitId === habit.id;
+          const completedDays = days.filter((date) => habitDoneOn(habit.id, date)).length;
+          const progress = Math.round((completedDays / days.length) * 100);
+          const doneToday = habitDoneOn(habit.id, today);
+
+          return (
+            <Card key={habit.id}>
+              <div className="h-1.5" style={{ backgroundColor: habit.color }} />
+              <CardHeader>
+                <div className="flex flex-col justify-between gap-3 md:flex-row md:items-start">
+                  <div>
+                    <CardTitle>{habit.name}</CardTitle>
+                    <CardDescription>{habit.description || "Daily checklist habit."}</CardDescription>
+                  </div>
+                  <Badge variant={doneToday ? "done" : "default"}>{doneToday ? "Done today" : "Pending today"}</Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-semibold text-slate-300">7-day progress</span>
+                    <span className="text-slate-400">{completedDays}/7 | {progress}%</span>
+                  </div>
+                  <Progress value={progress} />
+                </div>
+
+                <div className="grid grid-cols-7 gap-2">
+                  {days.map((date) => {
+                    const done = habitDoneOn(habit.id, date);
+                    const label = new Intl.DateTimeFormat("en", { weekday: "short", day: "numeric" }).format(new Date(`${date}T12:00:00`));
+                    return (
+                      <button
+                        key={date}
+                        type="button"
+                        onClick={() => onToggleDate(habit.id, date)}
+                        className={`min-h-16 rounded-md border px-1 text-xs font-bold transition ${done ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-100" : "border-white/10 bg-white/[0.04] text-slate-400 hover:bg-white/10"}`}
+                      >
+                        <span className="block">{label}</span>
+                        <span className="mt-1 block text-lg">{done ? "Yes" : "-"}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {isEditing ? (
+                  <form action={(form) => saveHabitEdit(habit, form)} className="grid gap-3 border-t border-white/10 pt-5 md:grid-cols-2">
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>Name</Label>
+                      <Input name="name" defaultValue={habit.name} required />
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>Description</Label>
+                      <Textarea name="description" defaultValue={habit.description || ""} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Color</Label>
+                      <Input name="color" type="color" defaultValue={habit.color} className="h-11 p-1" />
+                    </div>
+                    <div className="flex items-end gap-2">
+                      <Button type="submit">Save</Button>
+                      <Button type="button" variant="ghost" onClick={() => setEditingHabitId(null)}>Cancel</Button>
+                    </div>
+                  </form>
+                ) : null}
+
+                <div className="flex flex-wrap gap-2">
+                  <Button variant={doneToday ? "success" : "secondary"} onClick={() => onToggleDate(habit.id, today)}>
+                    <CheckCircle2 size={16} /> {doneToday ? "Undo today" : "Mark today"}
+                  </Button>
+                  <Button variant="secondary" onClick={() => setEditingHabitId(isEditing ? null : habit.id)}><Pencil size={16} /> Edit</Button>
+                  <Button variant="danger" onClick={() => onUpdate(habit.id, { archived: true })}><Archive size={16} /> Archive</Button>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </section>
+    </div>
+  );
 }
 
 function BrainDumpPanel({ businesses, items, onCreate, onArchive, onConvert }: { businesses: Business[]; items: BrainDump[]; onCreate: (form: FormData) => Promise<void>; onArchive: (id: string) => Promise<void>; onConvert: (item: BrainDump, businessId: string) => Promise<void> }) {

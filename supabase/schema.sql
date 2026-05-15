@@ -37,16 +37,41 @@ create table if not exists public.brain_dumps (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.habits (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  name text not null,
+  description text not null default '',
+  color text not null default '#38bdf8',
+  archived boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.habit_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  habit_id uuid not null references public.habits(id) on delete cascade,
+  completed_date date not null,
+  created_at timestamptz not null default now(),
+  unique (habit_id, completed_date)
+);
+
 create index if not exists businesses_user_id_idx on public.businesses(user_id);
 create index if not exists tasks_user_id_idx on public.tasks(user_id);
 create index if not exists tasks_business_id_idx on public.tasks(business_id);
 create index if not exists tasks_status_priority_due_date_idx on public.tasks(status, priority, due_date);
 create index if not exists brain_dumps_user_id_idx on public.brain_dumps(user_id);
 create index if not exists brain_dumps_business_id_idx on public.brain_dumps(business_id);
+create index if not exists habits_user_id_idx on public.habits(user_id);
+create index if not exists habit_logs_user_id_idx on public.habit_logs(user_id);
+create index if not exists habit_logs_habit_id_completed_date_idx on public.habit_logs(habit_id, completed_date);
 
 alter table public.businesses enable row level security;
 alter table public.tasks enable row level security;
 alter table public.brain_dumps enable row level security;
+alter table public.habits enable row level security;
+alter table public.habit_logs enable row level security;
 
 drop policy if exists "Users can manage own businesses" on public.businesses;
 create policy "Users can manage own businesses"
@@ -65,6 +90,20 @@ with check (auth.uid() = user_id);
 drop policy if exists "Users can manage own brain dumps" on public.brain_dumps;
 create policy "Users can manage own brain dumps"
 on public.brain_dumps
+for all
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+drop policy if exists "Users can manage own habits" on public.habits;
+create policy "Users can manage own habits"
+on public.habits
+for all
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+drop policy if exists "Users can manage own habit logs" on public.habit_logs;
+create policy "Users can manage own habit logs"
+on public.habit_logs
 for all
 using (auth.uid() = user_id)
 with check (auth.uid() = user_id);
@@ -90,4 +129,9 @@ for each row execute function public.set_updated_at();
 drop trigger if exists brain_dumps_set_updated_at on public.brain_dumps;
 create trigger brain_dumps_set_updated_at
 before update on public.brain_dumps
+for each row execute function public.set_updated_at();
+
+drop trigger if exists habits_set_updated_at on public.habits;
+create trigger habits_set_updated_at
+before update on public.habits
 for each row execute function public.set_updated_at();
